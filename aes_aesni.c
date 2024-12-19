@@ -9,7 +9,7 @@
 #define Nb 4
 #define Nk 4
 #define Nr 10
-#define MB_TO_TEST 50
+#define MB_TO_TEST 1024
 #define BLOCK_SIZE 16
 #define NUM_BLOCKS ((MB_TO_TEST * 1024 * 1024) / BLOCK_SIZE)
 
