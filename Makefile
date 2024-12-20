@@ -1,19 +1,25 @@
 CC = gcc
-OBJS = aes.o
 OUTDIR = out
 SRCDIR = src
+CFLAGS = -O2
+DEP = $(SRCDIR)/serial.c $(SRCDIR)/common.c
 
 .PHONY: clean all
 
-tester:
-	$(CC) -O2 $@.c -o $(OUTDIR)/$@.o
+tester_openmp: CFLAGS += -fopenmp
+tester_openmp: DEP += $(SRCDIR)/openmp.c
 
-%:
-	$(CC) -O2 -I$(SRCDIR) $@.c -o $(OUTDIR)/$@.o
+tester_pthread: CFLAGS += -lopenmp
+tester_pthread: DEP += $(SRCDIR)/pthread.c
+
+tester_aesni: CFLAGS += -maes
+tester_aesni: DEP += $(SRCDIR)/aesni.c
+
+tester_%:
+	$(CC) $(CFLAGS) -I$(SRCDIR) $@.c $(DEP) -o $(OUTDIR)/$@.o 
 
 clean:
 	@echo "cleaning outdir"
 	-rm ./out/*
 
-all:
-	@echo all
+all: tester_serial tester_aesni

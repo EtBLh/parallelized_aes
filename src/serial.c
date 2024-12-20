@@ -6,19 +6,8 @@ static inline void increment_counter(uint8_t* counter) {
     }
 }
 
-static inline void set_counter_value(uint8_t* counter, uint64_t value) {
-    counter[7] = value & 0xFF;
-    counter[6] = (value >> 8) & 0xFF;
-    counter[5] = (value >> 16) & 0xFF;
-    counter[4] = (value >> 24) & 0xFF;
-    counter[3] = (value >> 32) & 0xFF;
-    counter[2] = (value >> 40) & 0xFF;
-    counter[1] = (value >> 48) & 0xFF;
-    counter[0] = (value >> 56) & 0xFF;
-}
-
 // Modified state handling functions
-void state_in(state_t* state, const uint8_t* input) {
+static void state_in(state_t* state, const uint8_t* input) {
     for(int col = 0; col < 4; col++) {
         for(int row = 0; row < 4; row++) {
             (*state)[row][col] = input[col * 4 + row];
@@ -26,27 +15,12 @@ void state_in(state_t* state, const uint8_t* input) {
     }
 }
 
-void state_out(const state_t* state, uint8_t* output) {
+static void state_out(const state_t* state, uint8_t* output) {
     for(int col = 0; col < 4; col++) {
         for(int row = 0; row < 4; row++) {
             output[col * 4 + row] = (*state)[row][col];
         }
     }
-}
-
-static inline void prepare_ctr_block(ctr_block_t* base_ctr, uint8_t* counter_block, uint64_t block_idx) {
-    // Copy nonce
-    memcpy(counter_block, base_ctr->nonce, 8);
-    
-    // Get base counter value
-    uint64_t counter_value = 0;
-    for (int i = 0; i < 8; i++) {
-        counter_value = (counter_value << 8) | base_ctr->counter[i];
-    }
-    
-    // Add block index and set new counter value
-    counter_value += block_idx;
-    set_counter_value(counter_block + 8, counter_value);
 }
 
 void aes_keyexpansion_serial(uint8_t* key, uint8_t* roundKey) {
@@ -91,7 +65,7 @@ void aes_keyexpansion_serial(uint8_t* key, uint8_t* roundKey) {
 }
 
 
-void AddRoundKey(state_t* state, const uint8_t* roundKey, int round) {
+static void AddRoundKey(state_t* state, const uint8_t* roundKey, int round) {
     for(int col = 0; col < 4; col++) {
         for(int row = 0; row < 4; row++) {
             (*state)[row][col] ^= roundKey[round * 16 + col * 4 + row];
@@ -99,7 +73,7 @@ void AddRoundKey(state_t* state, const uint8_t* roundKey, int round) {
     }
 }
 
-void SubBytes(state_t* state) {
+static void SubBytes(state_t* state) {
     for(int i = 0; i < 4; i++) {
         for(int j = 0; j < 4; j++) {
             (*state)[i][j] = sbox[(*state)[i][j]];
@@ -107,7 +81,7 @@ void SubBytes(state_t* state) {
     }
 }
 
-void ShiftRows(state_t* state) {
+static void ShiftRows(state_t* state) {
     uint8_t temp;
     
     // Row 1: shift left by 1
@@ -133,7 +107,7 @@ void ShiftRows(state_t* state) {
     (*state)[3][0] = temp;
 }
 
-void MixColumns(state_t* state) {
+static void MixColumns(state_t* state) {
     uint8_t temp[4];
     uint8_t result[4];
     
@@ -155,7 +129,8 @@ void MixColumns(state_t* state) {
         }
     }
 }
-void aesctr_enc1block_serial(uint8_t* input, const uint8_t* roundKey, uint8_t* output) {
+
+void aes_enc1block_serial(uint8_t* input, const uint8_t* roundKey, uint8_t* output) {
     state_t state;
     
     // Input transformation
@@ -181,6 +156,18 @@ void aesctr_enc1block_serial(uint8_t* input, const uint8_t* roundKey, uint8_t* o
     state_out(&state, output);
 }
 
+void aesctr_enc1block_serial(uint8_t* counter, uint8_t* input, const uint8_t* roundKey, uint8_t* output) {
+    
+    uint8_t aes_res[16];
+
+    aes_enc1block_serial(counter, roundKey, aes_res);
+
+    // XOR keystream with input to create output
+    for(int j = 0; j < 16; j++) {
+        output[j] = input[j] ^ aes_res[j];
+    }
+}
+
 void aesctr_enc_serial(uint8_t* input, const uint8_t* roundKey, uint8_t* output, 
                           int num_blocks, ctr_block_t* initial_ctr) {
     uint8_t counter_block[16];
@@ -191,7 +178,7 @@ void aesctr_enc_serial(uint8_t* input, const uint8_t* roundKey, uint8_t* output,
         prepare_ctr_block(initial_ctr, counter_block, i);
         
         // Encrypt counter block to create keystream
-        aesctr_enc1block_serial(counter_block, roundKey, keystream);
+        aes_enc1block_serial(counter_block, roundKey, keystream);
         
         // XOR keystream with input to create output
         for(int j = 0; j < 16; j++) {
